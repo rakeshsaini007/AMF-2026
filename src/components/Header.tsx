@@ -23,7 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 font-serif">
-                  बूथ सुविधा दर्पण
+                  Booth Facilities Dashboard
                 </h1>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
                   AMF 2026

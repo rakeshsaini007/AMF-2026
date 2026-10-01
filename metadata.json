@@ -1,0 +1,6 @@
+{
+  "name": "बूथ सुविधा दर्पण - Polling Station Facilities Dashboard",
+  "description": "Real-time election polling station Assured Minimum Facilities (AMF) dashboard synced with Google Sheets via Google Apps Script.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

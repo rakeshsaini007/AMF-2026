@@ -1,5 +1,5 @@
 import { AppsScriptResponse, FacilityStatus, PollingBooth } from '../types';
-import { INITIAL_BOOTHS } from '../data/initialData';
+import { INITIAL_BOOTHS, ALL_41_VILLAGES } from '../data/initialData';
 
 /**
  * Fetch live data from Google Apps Script Web App
@@ -11,7 +11,10 @@ export async function fetchBoothsFromAppsScript(
   
   if (!scriptUrl || scriptUrl.trim() === '') {
     // Return sample offline data when URL is not configured
-    const allVillages = Array.from(new Set(INITIAL_BOOTHS.map(b => b.village))).sort();
+    const allVillages = Array.from(new Set([
+      ...ALL_41_VILLAGES,
+      ...INITIAL_BOOTHS.map(b => b.village.trim())
+    ])).sort((a, b) => a.localeCompare(b, 'hi'));
     return {
       booths: village && village !== 'all' ? INITIAL_BOOTHS.filter(b => b.village === village) : INITIAL_BOOTHS,
       villages: allVillages,
@@ -110,7 +113,7 @@ export async function fetchBoothsFromAppsScript(
         bloName: row.bloName || baseMatch?.bloName || 'बीएलओ नियुक्त',
         bloPhone: row.bloPhone || baseMatch?.bloPhone || '98765-XXXXX',
         sectorMagistrate: row.sectorMagistrate || baseMatch?.sectorMagistrate || 'सेक्टर अधिकारी',
-        remarks: row.remarks || baseMatch?.remarks || '',
+        remarks: row.remarks ? String(row.remarks).trim() : '',
         isVerified: row.isVerified ?? (baseMatch?.isVerified ?? true),
         lastUpdated: json.lastUpdated || new Date().toISOString().split('T')[0],
         readinessPercent,
@@ -119,9 +122,11 @@ export async function fetchBoothsFromAppsScript(
       };
     });
 
-    const villages = json.villages && json.villages.length > 0 
-      ? json.villages 
-      : Array.from(new Set(booths.map(b => b.village))).sort();
+    const villages = Array.from(new Set([
+      ...(json.villages || []),
+      ...booths.map(b => b.village.trim()),
+      ...ALL_41_VILLAGES
+    ])).sort((a, b) => a.localeCompare(b, 'hi'));
 
     return {
       booths,
@@ -135,7 +140,10 @@ export async function fetchBoothsFromAppsScript(
     console.warn('Apps Script fetch failed, falling back to cached/initial data:', err);
     
     // Provide a graceful fallback with initial data so app never breaks
-    const allVillages = Array.from(new Set(INITIAL_BOOTHS.map(b => b.village))).sort();
+    const allVillages = Array.from(new Set([
+      ...ALL_41_VILLAGES,
+      ...INITIAL_BOOTHS.map(b => b.village.trim())
+    ])).sort((a, b) => a.localeCompare(b, 'hi'));
     return {
       booths: village && village !== 'all' ? INITIAL_BOOTHS.filter(b => b.village === village) : INITIAL_BOOTHS,
       villages: allVillages,

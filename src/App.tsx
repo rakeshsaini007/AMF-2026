@@ -10,7 +10,7 @@ import { SummaryStats } from './components/SummaryStats';
 import { BoothCard } from './components/BoothCard';
 import { InspectionModal } from './components/InspectionModal';
 import { ActionAlertModal } from './components/ActionAlertModal';
-import { INITIAL_BOOTHS } from './data/initialData';
+import { INITIAL_BOOTHS, ALL_41_VILLAGES } from './data/initialData';
 import { PollingBooth, FacilityKey, FacilityStatus } from './types';
 import { getAppsScriptUrl } from './config';
 import { 
@@ -26,11 +26,14 @@ import {
 export default function App() {
   const [booths, setBooths] = useState<PollingBooth[]>(INITIAL_BOOTHS);
   const [villages, setVillages] = useState<string[]>(() => {
-    return Array.from(new Set(INITIAL_BOOTHS.map(b => b.village))).sort();
+    const set = new Set<string>();
+    ALL_41_VILLAGES.forEach(v => set.add(v.trim()));
+    INITIAL_BOOTHS.forEach(b => set.add(b.village.trim()));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'hi'));
   });
   
-  // Default selected village: First village from the sheet ("मीरापुर मीरगंज") or "all"
-  const [selectedVillage, setSelectedVillage] = useState<string>('मीरापुर मीरगंज');
+  // Default selected village: empty by default so dropdown shows "गांव का नाम चुनें (Select Village Name)"
+  const [selectedVillage, setSelectedVillage] = useState<string>('');
   
   // Apps Script state
   const [scriptUrl] = useState<string>(getAppsScriptUrl);
@@ -63,14 +66,19 @@ export default function App() {
       const res = await fetchBoothsFromAppsScript(scriptUrl);
       if (res.booths && res.booths.length > 0) {
         setBooths(res.booths);
-        if (res.villages && res.villages.length > 0) {
-          setVillages(res.villages);
-          setSelectedVillage(prev => {
-            if (prev === 'all') return 'all';
-            if (res.villages.includes(prev)) return prev;
-            return res.villages[0];
-          });
-        }
+        const combined = new Set<string>();
+        ALL_41_VILLAGES.forEach(v => combined.add(v.trim()));
+        (res.villages || []).forEach(v => combined.add(v.trim()));
+        res.booths.forEach(b => combined.add(b.village.trim()));
+        const fullVillages = Array.from(combined).sort((a, b) => a.localeCompare(b, 'hi'));
+        
+        setVillages(fullVillages);
+        setSelectedVillage(prev => {
+          if (!prev) return '';
+          if (prev === 'all') return 'all';
+          if (fullVillages.includes(prev)) return prev;
+          return '';
+        });
         if (res.sheetTitle) setSheetTitle(res.sheetTitle);
       }
     } catch (err: any) {
@@ -264,14 +272,24 @@ export default function App() {
     showToast(alertMsg, 'success');
   };
 
+  // Normalization helper to prevent any whitespace or unicode mismatch
+  const normalizeVillage = (v?: string) => {
+    if (!v) return '';
+    return v
+      .trim()
+      .toLowerCase()
+      .normalize('NFC')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .replace(/\s+/g, ' ');
+  };
+
   // Filtered Booths calculation: purely by selected village
   const filteredBooths = useMemo(() => {
-    return booths.filter(b => {
-      if (selectedVillage !== 'all' && b.village.toLowerCase() !== selectedVillage.toLowerCase()) {
-        return false;
-      }
-      return true;
-    });
+    if (!selectedVillage || selectedVillage === 'all') {
+      return booths;
+    }
+    const target = normalizeVillage(selectedVillage);
+    return booths.filter(b => normalizeVillage(b.village) === target);
   }, [booths, selectedVillage]);
 
   return (
@@ -301,7 +319,7 @@ export default function App() {
       {/* Content Container */}
       <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 flex-1">
         
-        {/* Village Selection */}
+        {/* Village Selection Card (Above Card) */}
         <VillageFilter
           villages={villages}
           selectedVillage={selectedVillage}
@@ -309,64 +327,85 @@ export default function App() {
           booths={booths}
         />
 
-        {/* Aggregate Analytics Bar for the selected village / view */}
-        <SummaryStats
-          selectedVillage={selectedVillage}
-          filteredBooths={filteredBooths}
-          totalAllBooths={booths.length}
-        />
-
-        {/* Section Heading & Result Counter */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2">
-          <div className="flex items-center gap-2">
-            <Layers className="w-5 h-5 text-amber-600" />
-            <h2 className="text-lg font-bold text-slate-900">
-              {selectedVillage === 'all' ? (
-                <span>समस्त गांव के मतदान केंद्र ({filteredBooths.length})</span>
-              ) : (
-                <span className="flex items-center gap-1.5">
-                  <span>गांव: <strong className="text-amber-700 underline decoration-amber-300">{selectedVillage}</strong> के मतदान केंद्र</span>
-                  <span className="text-sm font-normal text-slate-500">({filteredBooths.length} बूथ)</span>
-                </span>
-              )}
-            </h2>
-          </div>
-
-          <span className="text-xs text-slate-500">
-            प्रत्येक कार्ड में अनिवार्य 7 सुविधाएं: <strong>रैम्प, पेयजल, विद्युत, फर्नीचर, शौचालय, शेड, साइनेज</strong>
-          </span>
-        </div>
-
-        {/* Booth Cards Grid */}
-        {filteredBooths.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-3 shadow-xs">
-            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-6 h-6" />
+        {/* If no village is selected yet */}
+        {!selectedVillage ? (
+          <div className="bg-white border-2 border-dashed border-amber-300 rounded-2xl p-8 sm:p-12 text-center space-y-4 shadow-xs">
+            <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner border border-amber-200">
+              <Layers className="w-8 h-8 text-amber-600" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">कोई मतदान केंद्र नहीं मिला</h3>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
-              चयनित गांव के अनुसार कोई बूथ प्रदर्शित नहीं हो सका। कृपया अन्य गांव चुनें।
-            </p>
-            <button
-              onClick={() => setSelectedVillage('all')}
-              className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              सभी गांव देखें
-            </button>
+            <div className="space-y-1.5 max-w-lg mx-auto">
+              <h3 className="text-lg sm:text-xl font-bold text-slate-900 font-serif">
+                गांव का नाम चुनें (Select Village Name)
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600">
+                मतदान केंद्रों (Polling Booths) के विवरण और उनकी 7 अनिवार्य सुविधाएं देखने हेतु कृपया ऊपर दिए गए ड्रॉपडाउन मेनू से <strong>गांव का नाम चुनें</strong>।
+              </p>
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {filteredBooths.map(booth => (
-              <BoothCard
-                key={booth.boothNo}
-                booth={booth}
-                onUpdateFacility={handleUpdateFacility}
-                onUpdateRemark={handleUpdateRemark}
-                onSaveOrUpdate={handleSaveOrUpdateBooth}
-                onOpenEdit={(b) => setEditingBooth(b)}
-              />
-            ))}
-          </div>
+          <>
+            {/* Section Heading & Result Counter - Directly Below Village Selection */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <Layers className="w-5 h-5 text-amber-600 shrink-0" />
+                <h2 className="text-lg font-bold text-slate-900">
+                  {selectedVillage === 'all' ? (
+                    <span>समस्त {villages.length} ग्राम पंचायतों के सभी मतदान केंद्र ({filteredBooths.length})</span>
+                  ) : (
+                    <span className="flex items-center gap-2 flex-wrap">
+                      <span>चयनित गांव: <strong className="text-amber-700 underline decoration-amber-300 font-extrabold text-xl">{selectedVillage}</strong></span>
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                        कुल {filteredBooths.length} मतदान केंद्र कार्ड
+                      </span>
+                    </span>
+                  )}
+                </h2>
+              </div>
+
+              <span className="text-xs text-slate-500">
+                प्रत्येक कार्ड में अनिवार्य 7 सुविधाएं: <strong>रैम्प, पेयजल, विद्युत, फर्नीचर, शौचालय, शेड, साइनेज</strong>
+              </span>
+            </div>
+
+            {/* All Booth Cards Grid - Displayed Directly Below Select Village Name Card */}
+            {filteredBooths.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-3 shadow-xs">
+                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-slate-900">कोई मतदान केंद्र नहीं मिला</h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  चयनित गांव के अनुसार कोई बूथ प्रदर्शित नहीं हो सका। कृपया अन्य गांव चुनें।
+                </p>
+                <button
+                  onClick={() => setSelectedVillage('all')}
+                  className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  सभी गांव देखें
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {filteredBooths.map(booth => (
+                  <BoothCard
+                    key={booth.boothNo}
+                    booth={booth}
+                    onUpdateFacility={handleUpdateFacility}
+                    onUpdateRemark={handleUpdateRemark}
+                    onSaveOrUpdate={handleSaveOrUpdateBooth}
+                    onOpenEdit={(b) => setEditingBooth(b)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Aggregate Analytics & Compliance Bar (Below the booth cards) */}
+            <SummaryStats
+              selectedVillage={selectedVillage}
+              filteredBooths={filteredBooths}
+              totalAllBooths={booths.length}
+            />
+          </>
         )}
 
       </main>
